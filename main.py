@@ -29,6 +29,12 @@ directions = {
     pygame.K_SEMICOLON: 1,
 }
 
+
+class KeyInputStateMachine(object):  # receives all keydown events
+    def render(self, game):
+        pass
+
+
 @curry
 def handle_event(game, event):
     if event.type == pygame.KEYDOWN:
@@ -40,8 +46,10 @@ def handle_event(game, event):
             game.focused_node = game.focused_node.children[direction] if direction in game.focused_node.children \
                 else game.focused_node.node(game, direction)
         if event.key == pygame.K_b:
-            parent = game.focused_node.parent
-            game.focused_node = parent if parent is not None else game.focused_node
+            game.focused_node = game.focused_node.parent
+        if event.key == pygame.K_w:
+            children = game.focused_node.children
+            game.focused_node = children.values()[0] if len(children) == 1 else game.focused_node
 
 
 tab = map("    {}".format)
@@ -51,6 +59,7 @@ def p_between(p_a, p_b):
         (p_a[0]+p_b[0])/2,
         (p_a[1]+p_b[1])/2,
     )
+
 
 p_add = compose(list, map(add))
 p_sub = compose(list, map(sub))
@@ -62,16 +71,16 @@ base_font = pygame.font.SysFont('monospace', 20)
 
 
 class Node(object):
-    def __init__(self, position, r=32, energy=4, children=None, parent=None):
+    def __init__(self, position, r=32, energy=0, children=None, parent=None):
         self.position = position
         self.r = r
         self.energy = energy
         self.max_energy = 128
         self.children = children if children is not None else {}
-        self.parent = parent
+        self.parent = parent if parent is not None else self
 
     def update(self, game):
-        self.energy = min(self.energy+1, self.max_energy)
+        self.energy = min(self.energy+1, self.max_energy) if self is game.mother_node else self.energy
         list(map(methodcaller('update', game), self.children.values()))
 
     def collides(self, position, r):
