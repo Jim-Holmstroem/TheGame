@@ -36,7 +36,9 @@ def handle_event(game, event):
             pygame.quit()
             sys.exit()
         if event.key in directions.keys():
-            game.focused_node = game.focused_node.node(game.focused_node.r, directions[event.key])
+            direction = directions[event.key]
+            game.focused_node = game.focused_node.children[direction] if direction in game.focused_node.children \
+                else game.focused_node.node(game, direction)
         if event.key == pygame.K_b:
             parent = game.focused_node.parent
             game.focused_node = parent if parent is not None else game.focused_node
@@ -60,17 +62,35 @@ base_font = pygame.font.SysFont('monospace', 20)
 
 
 class Node(object):
-    def __init__(self, position, r=32, energy=4, children=(), parent=None):
+    def __init__(self, position, r=32, energy=4, children=None, parent=None):
         self.position = position
         self.r = r
         self.energy = energy
         self.max_energy = 128
-        self.children = children
+        self.children = children if children is not None else {}
         self.parent = parent
 
     def update(self, game):
         self.energy = min(self.energy+1, self.max_energy)
-        list(map(methodcaller('update', game), self.children))
+        list(map(methodcaller('update', game), self.children.values()))
+
+    def collides(self, position, r):
+        """
+        node with position and radius r
+        collidies with the subtree of self
+        """
+        slack = 0.99
+        squared_distance = (
+            (self.position[0]-position[0])**2 +
+            (self.position[1]-position[1])**2
+        )
+
+        return (squared_distance < slack * (r+self.r)**2) or any(
+            map(
+                methodcaller('collides', position, r),
+                self.children.values()
+            )
+        )
 
     def render(self, game):
         pygame.draw.circle(
@@ -103,21 +123,29 @@ class Node(object):
                 methodcaller('render', game),
                 render_connection,
             ]),
-            self.children
+            self.children.values()
         ))
 
-    def node(self, r, direction):
-        w = 2*pi*direction/8
-        node = Node(
-            (
-                self.position[0]+(self.r+r)*cos(w),
-                self.position[1]+(self.r+r)*sin(w),
-            ),
-            parent=self,
+    def node(self, game, direction):
+        r = 1.0 * self.r
+        w = 2 * pi * direction/8
+        position = (
+            self.position[0]+(self.r+r)*cos(w),
+            self.position[1]+(self.r+r)*sin(w),
         )
-        self.children = self.children + (node, )
+        if not game.mother_node.collides(position, r):
+            node = Node(
+                position,
+                r=r,
+                parent=self,
+            )
 
-        return node
+            self.children.update({direction: node})
+
+            return node
+
+        else:
+            return self
 
     def __str__(self):
         return "Node(\n    position={},\n    r={},\n    self.children=[\n{}    ],\n)\n".format(
@@ -131,7 +159,7 @@ class Node(object):
                                 methodcaller('split', '\n'),
                                 str
                             ),
-                            self.children
+                            self.children.values()  # TODO proper printing of dictionary
                         )
                     )
                 )
