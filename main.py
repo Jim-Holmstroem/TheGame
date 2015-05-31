@@ -81,7 +81,7 @@ class Node(object):
         self.parent = parent if parent is not None else self
 
     def update(self, game):
-        self.energy = min(self.energy+1, self.max_energy) if self is game.mother_node else self.energy
+        self.energy = min(self.energy+0.01, self.max_energy) if self is game.mother_node else self.energy
         def energy_flow(child, n_children=len(self.children)):
             old_energy = child.energy
             potential_flow = (self.energy-child.energy)/(16 * n_children)
