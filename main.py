@@ -42,9 +42,8 @@ def handle_event(game, event):
             pygame.quit()
             sys.exit()
         if event.key in directions.keys():
-            direction = directions[event.key]
-            game.focused_node = game.focused_node.children[direction] if direction in game.focused_node.children \
-                else game.focused_node.node(game, direction)
+            game.focused_node = game.focused_node.children[event.key] if event.key in game.focused_node.children \
+                else game.focused_node.node(game, event.key)
         if event.key == pygame.K_b:
             game.focused_node = game.focused_node.parent
         if event.key == pygame.K_w:
@@ -71,22 +70,36 @@ base_font = pygame.font.SysFont('monospace', 20)
 
 
 class Node(object):
-    def __init__(self, position, r=32, energy=0, children=None, parent=None):
+    def __init__(self, position, r=32, energy=0, health=128, children=None, parent=None):
         self.position = position
         self.r = r
         self.energy = energy
-        self.max_energy = 128
+        self.max_energy = (4 * r/128)**2
+        self.health = health
+        self.max_health = 128
         self.children = children if children is not None else {}
         self.parent = parent if parent is not None else self
 
     def update(self, game):
         self.energy = min(self.energy+1, self.max_energy) if self is game.mother_node else self.energy
+        def energy_flow(child, n_children=len(self.children)):
+            old_energy = child.energy
+            potential_flow = (self.energy-child.energy)/(16 * n_children)
+            child.energy += potential_flow
+            child.energy = min(child.energy, child.max_energy)
+            child.energy = max(child.energy, 0)
+            actual_flow = child.energy - old_energy
+            return actual_flow
+
+
+        self.energy -= sum(map(energy_flow, self.children.values()))
+
         list(map(methodcaller('update', game), self.children.values()))
 
     def collides(self, position, r):
         """
         node with position and radius r
-        collidies with the subtree of self
+        collides with the subtree of self
         """
         slack = 0.99
         squared_distance = (
@@ -102,54 +115,74 @@ class Node(object):
         )
 
     def render(self, game):
-        pygame.draw.circle(
-            game.surface,
-            base_color,
-            tuple(map(int, self.position)),
-            int(self.r*sqrt(self.energy/self.max_energy)),
-            0
-        )
-        pygame.draw.circle(
-            game.surface,
-            base_color if self is not game.focused_node else focused_color,
-            tuple(map(int, self.position)),
-            int(self.r),
-            2
-        )
-        def render_connection(node):
-            tangent = p_between(self.position, node.position)
-            width=0.5
-            pygame.draw.line(
+        @curry
+        def render_circle(color, width, r):
+            pygame.draw.circle(
                 game.surface,
-                (150, 210, 60),
-                p_between(self.position, tangent),
-                p_between(node.position, tangent),
-                4
+                color,
+                tuple(map(int, self.position)),
+                int(r),
+                int(width),
             )
+
+        render_circle(
+            base_color,
+            0,
+            self.r * sqrt(self.energy/self.max_energy)
+        )
+        list(map(
+            render_circle((220, 10, 15), 1),
+            map(lambda i: self.r*sqrt(i/4), range(1, 4+1))
+        ))
+
+        render_circle(
+            (220, 10, 15) if self is not game.focused_node else focused_color,
+            4 * (self.health/self.max_health),
+            self.r
+        )
+
+        def render_connection(item):
+            key, node = item
+            tangent = p_between(self.position, node.position)
+            #width=0.5
+            #pygame.draw.line(
+            #    game.surface,
+            #    (150, 210, 60),
+            #    p_between(self.position, tangent),
+            #    p_between(node.position, tangent),
+            #    4
+            #)
+            #game.surface.blit(
+            #    base_font.render(key.name(), True, (255, 255, 255)),
+            #    p_between(tangent, node.position)
+            #)
+
 
         list(map(
             juxt([
-                methodcaller('render', game),
+                compose(methodcaller('render', game), itemgetter(1)),
                 render_connection,
             ]),
-            self.children.values()
+            self.children.items()
         ))
 
-    def node(self, game, direction):
-        r = 1.0 * self.r
-        w = 2 * pi * direction/8
+
+    def node(self, game, key):
+        r = 32
+        w = 2 * pi * directions[key]/8
         position = (
             self.position[0]+(self.r+r)*cos(w),
             self.position[1]+(self.r+r)*sin(w),
         )
-        if not game.mother_node.collides(position, r):
+        if not game.mother_node.collides(position, r) and self.energy >= self.max_energy/4:
+            self.energy -= self.max_energy/4
             node = Node(
                 position,
                 r=r,
                 parent=self,
             )
 
-            self.children.update({direction: node})
+            self.children.update({key: node})
 
             return node
 
@@ -190,7 +223,10 @@ if __name__ == "__main__":
 
     game = Game(
         surface=surface,
-        mother_node=Node((512, 512)),
+        mother_node=Node(
+            (512, 512),
+            r=64,
+        ),
     )
 
     while True:
