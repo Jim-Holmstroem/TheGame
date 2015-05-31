@@ -68,6 +68,15 @@ base_color = (60, 150, 210)
 focused_color = (200, 200, 0)
 base_font = pygame.font.SysFont('monospace', 20)
 
+@curry
+def child_position(self_position, self_r, r, key):
+    w = 2 * pi * directions[key]/8
+    position = (
+        self_position[0]+(self_r+r)*cos(w),
+        self_position[1]+(self_r+r)*sin(w),
+    )
+
+    return position
 
 class Node(object):
     def __init__(self, position, r=32, energy=0, health=128, children=None, parent=None):
@@ -144,19 +153,14 @@ class Node(object):
         def render_connection(item):
             key, node = item
             tangent = p_between(self.position, node.position)
-            #width=0.5
-            #pygame.draw.line(
-            #    game.surface,
-            #    (150, 210, 60),
-            #    p_between(self.position, tangent),
-            #    p_between(node.position, tangent),
-            #    4
-            #)
-            #game.surface.blit(
-            #    base_font.render(key.name(), True, (255, 255, 255)),
-            #    p_between(tangent, node.position)
-            #)
-
+            width=0.5
+            pygame.draw.line(
+                game.surface,
+                (150, 210, 60),
+                p_between(self.position, tangent),
+                p_between(node.position, tangent),
+                4
+            )
 
         list(map(
             juxt([
@@ -166,14 +170,25 @@ class Node(object):
             self.children.items()
         ))
 
+        if self is game.focused_node:
+            def text_hint(key):
+                child_position_ = child_position(self.position, self.r, 32, key)
+                tangent = p_between(self.position, child_position_)
+                game.surface.blit(
+                    base_font.render(pygame.key.name(key), True, (200, 25, 255)),
+                    p_sub(p_between(tangent, child_position_), (10, 10))
+                )
+
+            list(map(
+                text_hint,
+                directions.keys()
+            ))
+
+
 
     def node(self, game, key):
         r = 32
-        w = 2 * pi * directions[key]/8
-        position = (
-            self.position[0]+(self.r+r)*cos(w),
-            self.position[1]+(self.r+r)*sin(w),
-        )
+        position = child_position(self.position, self.r, r, key)
         if not game.mother_node.collides(position, r) and self.energy >= self.max_energy/4:
             self.energy -= self.max_energy/4
             node = Node(
